@@ -9,6 +9,8 @@ import streamlit as st
 OLLAMA_URL = "http://localhost:11434/api/chat"
 OLLAMA_TAGS_URL = "http://localhost:11434/api/tags"
 MODEL = "gemma3:4b"
+GEMINI_MODEL = "gemini-2.5-flash"
+GEMINI_API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
 GITHUB_API = "https://api.github.com"
 
 MAX_FILE_BYTES = 12_000
@@ -322,6 +324,16 @@ with st.sidebar:
         ["English", "Hindi"],
     )
 
+    gemini_key = st.secrets.get("GEMINI_API_KEY", "") if hasattr(st, "secrets") else ""
+    import os
+    gemini_key = gemini_key or os.getenv("GEMINI_API_KEY", "")
+    ai_provider = st.selectbox(
+        "AI engine",
+        ["Local Ollama", "Cloud Gemini"],
+        index=1 if gemini_key else 0,
+        help="Cloud Gemini needs GEMINI_API_KEY in Streamlit secrets or environment variables. Local Ollama needs Gemma 3 4B installed.",
+    )
+
     level = st.selectbox(
         "Experience level",
         ["Beginner", "Intermediate", "Advanced"],
@@ -615,6 +627,15 @@ def select_candidate_paths(paths, issue_title, issue_body):
 # ==========================================
 # LOCAL AI HELPERS
 # ==========================================
+def get_gemini_api_key():
+    """Read Gemini credentials from Streamlit secrets or environment."""
+    import os
+    try:
+        return st.secrets.get("GEMINI_API_KEY", "") or os.getenv("GEMINI_API_KEY", "")
+    except Exception:
+        return os.getenv("GEMINI_API_KEY", "")
+
+
 def check_ollama():
     """Check Ollama connectivity and model availability."""
     try:
@@ -650,8 +671,9 @@ def analyze_issue(
     source_files,
     level,
     language,
+    ai_provider="Local Ollama",
 ):
-    """Generate an evidence-aware contribution plan using local Gemma."""
+    """Generate an evidence-aware contribution plan using local Gemma or cloud Gemini."""
     file_list = (
         "\n".join(paths[:150])
         if paths
@@ -728,34 +750,39 @@ Create these sections:
 Be concise, practical, and beginner-friendly.
 """
 
+    if ai_provider == "Cloud Gemini":
+        api_key = get_gemini_api_key()
+        if not api_key:
+            raise RuntimeError(
+                "Gemini API key missing. Add GEMINI_API_KEY to Streamlit secrets or environment variables."
+            )
+        response = requests.post(
+            GEMINI_API_URL,
+            params={"key": api_key},
+            json={"contents": [{"parts": [{"text": prompt}]}]},
+            timeout=120,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        try:
+            return payload["candidates"][0]["content"]["parts"][0]["text"]
+        except (KeyError, IndexError, TypeError):
+            raise RuntimeError("Gemini returned an unexpected or empty response.")
+
     response = requests.post(
         OLLAMA_URL,
         json={
             "model": MODEL,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": prompt,
-                }
-            ],
+            "messages": [{"role": "user", "content": prompt}],
             "stream": False,
         },
         timeout=300,
     )
-
     response.raise_for_status()
-
     result = response.json()
-
     if not isinstance(result.get("message"), dict):
-        raise RuntimeError(
-            "Ollama returned an unexpected response."
-        )
-
-    return result["message"].get(
-        "content",
-        "The model returned an empty response.",
-    )
+        raise RuntimeError("Ollama returned an unexpected response.")
+    return result["message"].get("content", "The model returned an empty response.")
 
 
 # ==========================================
@@ -866,12 +893,13 @@ if analyze_clicked:
                     "The analysis will use issue details and file paths."
                 )
 
-            with st.spinner("Checking the local model..."):
-                check_ollama()
+            if ai_provider == "Local Ollama":
+                with st.spinner("Checking the local model..."):
+                    check_ollama()
 
             with st.spinner(
                 "Preparing your contribution notes. "
-                "Local inference may take a few minutes."
+                "Cloud or local inference may take a few minutes."
             ):
                 analysis = analyze_issue(
                     issue,
@@ -880,6 +908,7 @@ if analyze_clicked:
                     source_files,
                     level,
                     language,
+                    ai_provider,
                 )
 
             st.markdown("---")

@@ -40,3 +40,15 @@ Clone the repository:
 ```bash
 git clone https://github.com/faizahmad3249/IssueLens-AI.git
 cd IssueLens-AI
+
+## Run locally with one click (Windows)
+
+- Run `setup.bat` once to create the virtual environment and install Python packages.
+- Run `run.bat` whenever you want to launch IssueLens.
+- Local AI requires Ollama and the `gemma3:4b` model. Cloud Gemini mode does not require Ollama.
+
+## Cloud deployment
+
+IssueLens supports Google Gemini API for cloud inference. Deploy the Streamlit app using the instructions in [DEPLOYMENT.md](DEPLOYMENT.md), then add `GEMINI_API_KEY` in Streamlit Community Cloud app secrets.
+
+See [DEPLOYMENT.md](DEPLOYMENT.md) for complete setup, configuration, and troubleshooting instructions.

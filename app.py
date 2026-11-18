@@ -324,8 +324,11 @@ with st.sidebar:
         ["English", "Hindi"],
     )
 
-    gemini_key = st.secrets.get("GEMINI_API_KEY", "") if hasattr(st, "secrets") else ""
     import os
+    try:
+        gemini_key = st.secrets.get("GEMINI_API_KEY", "")
+    except Exception:
+        gemini_key = ""
     gemini_key = gemini_key or os.getenv("GEMINI_API_KEY", "")
     ai_provider = st.selectbox(
         "AI engine",
